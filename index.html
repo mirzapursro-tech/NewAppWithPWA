@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Post Office Directory Dashboard</title>
+    
+    <!-- PWA Requirements -->
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#4f46e5" />
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <!-- Fuse.js for Fuzzy Search -->
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        /* Light Theme Defaults */
+        --primary: #4f46e5;
+        --primary-hover: #4338ca;
+        --bg: #f1f5f9;
+        --card-bg: #ffffff;
+        --text: #0f172a;
+        --text-light: #64748b;
+        --border: #e2e8f0;
+        --input-bg: #ffffff;
+        --input-border: #cbd5e1;
+        --btn-secondary: #f8fafc;
+        --btn-secondary-hover: #f1f5f9;
+        --success-bg: #dcfce7;
+        --success-text: #166534;
+        --success-border: #4ade80;
+      }
+
+      [data-theme="dark"] {
+        /* Dark Theme Overrides */
+        --primary: #6366f1;
+        --primary-hover: #818cf8;
+        --bg: #0f172a;
+        --card-bg: #1e293b;
+        --text: #f8fafc;
+        --text-light: #94a3b8;
+        --border: #334155;
+        --input-bg: #0f172a;
+        --input-border: #475569;
+        --btn-secondary: #334155;
+        --btn-secondary-hover: #475569;
+        --success-bg: #064e3b;
+        --success-text: #34d399;
+        --success-border: #059669;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Inter", sans-serif; }
+      
+      body {
+        background-color: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 40px 20px;
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+
+      /* Theme Toggle */
+      .theme-toggle-container {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        z-index: 100;
+      }
+      .theme-toggle-container select {
+        padding: 8px 16px;
+        border-radius: 8px;
+        background-color: var(--card-bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        outline: none;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+
+      /* Main Card Containers */
+      .container {
+        width: 100%;
+        max-width: 440px;
+        background: var(--card-bg);
+        border-radius: 16px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+        overflow: hidden;
+        border: 1px solid var(--border);
+        transition: all 0.3s ease;
+      }
+      .dashboard-container {
+        max-width: 760px;
+      }
+
+      .header { padding: 32px 32px 24px; text-align: center; }
+      .header h1 { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+      .header p { font-size: 14px; color: var(--text-light); }
+
+      /* Tabs */
+      .tabs { display: flex; border-bottom: 1px solid var(--border); }
+      .tab-btn {
+        flex: 1; padding: 16px; background: none; border: none;
+        font-size: 14px; font-weight: 600; color: var(--text-light);
+        cursor: pointer; transition: all 0.2s; border-bottom: 2px solid transparent;
+      }
+      .tab-btn.active { color: var(--primary); background: var(--card-bg); border-bottom: 2px solid var(--primary); }
+      .tab-btn:hover:not(.active) { color: var(--text); background: var(--btn-secondary); }
+
+      .form-body { padding: 32px; }
+
+      /* Input Fields */
+      .input-group { margin-bottom: 20px; }
+      .input-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+      .input-group input {
+        width: 100%; padding: 12px 16px; background: var(--input-bg); color: var(--text);
+        border: 1px solid var(--input-border); border-radius: 8px; font-size: 14px; outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      .input-group input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
+
+      /* Buttons */
+      .btn {
+        display: inline-flex; justify-content: center; align-items: center; gap: 8px;
+        width: 100%; padding: 12px 20px; background: var(--primary); color: white;
+        border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.2s;
+      }
+      .btn:hover { background: var(--primary-hover); }
+      
+      .btn.secondary { background: var(--btn-secondary); color: var(--text); border: 1px solid var(--border); }
+      .btn.secondary:hover { background: var(--btn-secondary-hover); }
+      
+      .btn.icon-btn { background: var(--btn-secondary); border: 1px solid var(--border); color: var(--text); width: auto; padding: 12px; font-size: 16px; }
+      .btn.icon-btn:hover { background: var(--btn-secondary-hover); }
+
+      /* Alerts */
+      .alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 20px; display: none; }
+      .alert.error { background: #fee2e2; color: #991b1b; border: 1px solid #f87171; display: block; }
+      .alert.success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); display: block; }
+
+      /* Dashboard Layout */
+      .dashboard-header {
+        display: flex; flex-direction: column; gap: 16px;
+        border-bottom: 1px solid var(--border); padding: 24px 32px; background: rgba(0,0,0,0.01);
+      }
+      @media (min-width: 600px) {
+        .dashboard-header { flex-direction: row; justify-content: space-between; align-items: center; }
+      }
+      .user-info { font-size: 14px; color: var(--text-light); }
+      .user-info span { font-weight: 600; color: var(--text); word-break: break-all; }
+      
+      .dashboard-content { padding: 32px; }
+
+      /* Search Row Layout Fixes */
+      .search-layout {
+        display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; width: 100%;
+      }
+      .search-input-wrapper {
+        display: flex; flex: 1; gap: 8px;
+      }
+      .search-input-wrapper input {
+        flex: 1; padding: 12px 16px; background: var(--input-bg); color: var(--text);
+        border: 1px solid var(--input-border); border-radius: 8px; font-size: 14px; outline: none;
+      }
+      .search-input-wrapper input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
+      
+      @media (min-width: 600px) {
+        .search-layout { flex-direction: row; }
+        .search-layout .btn.primary-search { width: 120px; }
+      }
+
+      /* Custom File Upload Styling */
+      .file-upload-wrapper {
+        display: flex; flex-direction: column; gap: 12px; margin-bottom: 8px;
+      }
+      .file-upload-wrapper input[type="file"] {
+        padding: 8px 12px; border: 1px dashed var(--input-border); border-radius: 8px;
+        background: var(--btn-secondary); color: var(--text); width: 100%; font-size: 14px; cursor: pointer;
+      }
+      .file-upload-wrapper input[type="file"]::file-selector-button {
+        padding: 8px 16px; margin-right: 16px; background: var(--primary); color: white;
+        border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 13px;
+      }
+      .file-upload-wrapper input[type="file"]::file-selector-button:hover { background: var(--primary-hover); }
+      
+      @media (min-width: 600px) {
+        .file-upload-wrapper { flex-direction: row; align-items: center; }
+        .file-upload-wrapper .btn { width: auto; }
+      }
+
+      /* Search Results List */
+      .list-container {
+        list-style: none; max-height: 400px; overflow-y: auto; border: 1px solid var(--border);
+        border-radius: 8px; background: var(--card-bg); margin-top: 16px;
+      }
+      .list-item { padding: 16px; border-bottom: 1px solid var(--border); font-size: 14px; line-height: 1.6; }
+      .list-item:last-child { border-bottom: none; }
+      .list-empty { padding: 32px 24px; text-align: center; color: var(--text-light); font-size: 14px; }
+      
+      /* Scrollbar Styling */
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--text-light); }
+
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <!-- Theme Toggle Dropdown -->
+    <div class="theme-toggle-container">
+      <select id="theme-selector" onchange="changeTheme(this.value)">
+        <option value="system">System Theme</option>
+        <option value="light">Light Mode</option>
+        <option value="dark">Dark Mode</option>
+      </select>
+    </div>
+
+    <div id="app-container" class="container">
+      
+      <!-- AUTH VIEW -->
+      <div id="auth-view">
+        <div class="header">
+          <h1>Post Office Directory</h1>
+          <p>Sign in or create an account to manage data</p>
+        </div>
+
+        <div class="tabs">
+          <button type="button" class="tab-btn active" id="tab-signin" onclick="switchTab('signin')">Sign In</button>
+          <button type="button" class="tab-btn" id="tab-signup" onclick="switchTab('signup')">Sign Up</button>
+        </div>
+
+        <div class="form-body">
+          <div id="alert-box" class="alert"></div>
+
+          <div class="input-group">
+            <label>Email Address</label>
+            <input type="email" id="email" placeholder="name@example.com" />
+          </div>
+          <div class="input-group">
+            <label>Password</label>
+            <input type="password" id="password" placeholder="At least 6 characters" />
+          </div>
+
+          <button type="button" id="auth-btn" class="btn" onclick="handleAuth()">Sign In</button>
+        </div>
+      </div>
+
+      <!-- DASHBOARD VIEW -->
+      <div id="dashboard-view" class="hidden dashboard-container">
+        <div class="dashboard-header">
+          <div class="user-info">Logged in as:<br><span id="user-email-display"></span></div>
+          <div style="display: flex; gap: 10px;">
+             <!-- Install PWA Button -->
+             <button type="button" class="btn hidden" style="width: auto; margin: 0; padding: 10px 20px; background: #22c55e; color: white;" id="install-app-btn">Install App</button>
+             <!-- Sign Out Button -->
+             <button type="button" class="btn secondary" style="width: auto; margin: 0; padding: 10px 20px" id="signout-btn">Sign Out</button>
+          </div>
+        </div>
+        
+        <!-- Upload Section -->
+        <div class="dashboard-content">
+          <h3 style="font-size: 18px; margin-bottom: 6px; color: var(--text);">Upload Directory Data</h3>
+          <p style="font-size: 13px; color: var(--text-light); margin-bottom: 20px; line-height: 1.5;">
+            Select an Excel file (.xlsx, .xls). Ensure columns are named exactly <strong>Branch Office</strong> and <strong>Sub Office</strong>.
+          </p>
+          <div class="file-upload-wrapper">
+            <input type="file" id="excel-file" accept=".xlsx, .xls" />
+            <button type="button" class="btn" id="upload-excel-btn" onclick="uploadExcel()">Upload to Database</button>
+          </div>
+        </div>
+
+        <!-- Search Section -->
+        <div class="dashboard-content" style="border-top: 1px solid var(--border)">
+          <h3 style="font-size: 18px; margin-bottom: 16px; color: var(--text);">Search Directory</h3>
+          
+          <div class="search-layout">
+            <div class="search-input-wrapper">
+              <input type="text" id="search-input" placeholder="Search branch or sub office...">
+              <button type="button" class="btn icon-btn" id="mic-btn" onclick="startVoiceSearch()" title="Voice Search">🎤</button>
+            </div>
+            <button type="button" class="btn primary-search" id="search-btn" onclick="searchOffices()">Search</button>
+          </div>
+
+          <ul id="search-results-list" class="list-container">
+            <li class="list-empty">Loading directory data...</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // SUPABASE SETUP
+      const SUPABASE_URL = "https://nvviolzdujgwkmnrnaww.supabase.co";
+      const SUPABASE_ANON_KEY = "sb_publishable_vwlbAzFCF0zMMqeiPWyu7Q_ruSZ1WwM";
+      const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      let currentMode = "signin";
+      let cachedPostOffices = [];
+      let fuse; 
+
+      // THEME LOGIC
+      function applyTheme(theme) {
+        if (theme === 'system') {
+          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+        } else {
+          document.documentElement.setAttribute('data-theme', theme);
+        }
+        localStorage.setItem('app-theme', theme);
+        document.getElementById('theme-selector').value = theme;
+      }
+
+      function changeTheme(theme) { applyTheme(theme); }
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (localStorage.getItem('app-theme') === 'system') applyTheme('system');
+      });
+      applyTheme(localStorage.getItem('app-theme') || 'system');
+
+      // PWA SERVICE WORKER REGISTRATION
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js').then(registration => {
+            console.log('ServiceWorker registration successful');
+          }).catch(err => {
+            console.log('ServiceWorker registration failed: ', err);
+          });
+        });
+      }
+
+      // PWA INSTALLATION LOGIC
+      let deferredPrompt;
+      const installBtn = document.getElementById('install-app-btn');
+
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installBtn.classList.remove('hidden'); 
+      });
+
+      installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+          deferredPrompt.prompt();
+          const { outcome } = await deferredPrompt.userChoice;
+          if (outcome === 'accepted') {
+            installBtn.classList.add('hidden');
+          }
+          deferredPrompt = null;
+        }
+      });
+
+      // DATA FETCHING
+      async function fetchAllPostOffices() {
+        const { data, error } = await supabaseClient.from('post_offices').select('*');
+        if (error) {
+          console.error('Error fetching post offices:', error);
+          document.getElementById('search-results-list').innerHTML = `<li class="list-empty" style="color: var(--error);">Error loading data.</li>`;
+          return;
+        }
+        cachedPostOffices = data || [];
+        
+        const fuseOptions = {
+          keys: ['branch_office', 'sub_office'],
+          threshold: 0.3,
+          ignoreLocation: true
+        };
+        fuse = new Fuse(cachedPostOffices, fuseOptions);
+
+        document.getElementById('search-results-list').innerHTML = `<li class="list-empty">Loaded ${cachedPostOffices.length} offices. Start typing or use voice search!</li>`;
+      }
+
+      // AUTH LOGIC
+      function switchTab(mode) {
+        currentMode = mode;
+        const signinTab = document.getElementById("tab-signin");
+        const signupTab = document.getElementById("tab-signup");
+        const authBtn = document.getElementById("auth-btn");
+        hideAlert();
+
+        if (mode === "signin") {
+          signinTab.classList.add("active");
+          signupTab.classList.remove("active");
+          authBtn.textContent = "Sign In";
+        } else {
+          signupTab.classList.add("active");
+          signinTab.classList.remove("active");
+          authBtn.textContent = "Create Account";
+        }
+      }
+
+      function showAlert(message, type = "error") {
+        const box = document.getElementById("alert-box");
+        box.className = `alert ${type}`;
+        box.textContent = message;
+      }
+
+      function hideAlert() {
+        const box = document.getElementById("alert-box");
+        box.className = "alert";
+        box.textContent = "";
+      }
+
+      async function handleAuth() {
+        hideAlert();
+        const email = document.getElementById("email").value.trim();
+        const password = document.getElementById("password").value.trim();
+
+        if (!email || !password) { showAlert("Please fill in all fields."); return; }
+
+        if (currentMode === "signup") {
+          const { error } = await supabaseClient.auth.signUp({ email, password });
+          if (error) { showAlert(error.message); } 
+          else {
+            showAlert("Account created successfully! You can now sign in.", "success");
+            switchTab("signin");
+          }
+        } else {
+          const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+          if (error) { showAlert(error.message); } 
+          else { checkUserSession(); }
+        }
+      }
+
+      async function checkUserSession() {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        updateUI(session);
+      }
+
+      function updateUI(session) {
+        const authView = document.getElementById("auth-view");
+        const dashboardView = document.getElementById("dashboard-view");
+        const container = document.getElementById("app-container");
+
+        if (session) {
+          authView.classList.add("hidden");
+          dashboardView.classList.remove("hidden");
+          container.classList.add("dashboard-container");
+          document.getElementById("user-email-display").textContent = session.user.email;
+          fetchAllPostOffices();
+        } else {
+          authView.classList.remove("hidden");
+          dashboardView.classList.add("hidden");
+          container.classList.remove("dashboard-container");
+          cachedPostOffices = [];
+        }
+      }
+
+      // EXCEL UPLOAD LOGIC
+      async function uploadExcel() {
+        const fileInput = document.getElementById("excel-file");
+        const file = fileInput.files[0];
+
+        if (!file) { alert("Please select an Excel file first."); return; }
+
+        const reader = new FileReader();
+        reader.onload = async function (e) {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: "array" });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+            if (jsonData.length === 0) { alert("The Excel file is empty."); return; }
+
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            const formattedData = jsonData.map((row) => ({
+              branch_office: row["Branch Office"],
+              sub_office: row["Sub Office"],
+              user_id: session.user.id,
+            }));
+
+            const { error } = await supabaseClient.from("post_offices").insert(formattedData);
+
+            if (error) { alert("Upload Error: " + error.message); } 
+            else {
+              alert("Post office data uploaded successfully!");
+              fileInput.value = ""; 
+              fetchAllPostOffices(); 
+            }
+          } catch (err) {
+            console.error(err);
+            alert('Error reading Excel file. Ensure headers are exactly "Branch Office" and "Sub Office".');
+          }
+        };
+
+        reader.readAsArrayBuffer(file);
+      }
+
+      // FUZZY SEARCH LOGIC
+      function searchOffices() {
+        const searchInput = document.getElementById('search-input').value.trim();
+        const resultsList = document.getElementById('search-results-list');
+        
+        if (!searchInput) {
+            resultsList.innerHTML = `<li class="list-empty">Please enter a name to search.</li>`;
+            return;
+        }
+
+        const results = fuse.search(searchInput);
+        const filteredData = results.map(result => result.item);
+
+        if (filteredData.length === 0) {
+            resultsList.innerHTML = `<li class="list-empty">No post offices found matching "<strong>${searchInput}</strong>".</li>`;
+            return;
+        }
+
+        resultsList.innerHTML = '';
+        filteredData.forEach(office => {
+            const li = document.createElement('li');
+            li.className = 'list-item';
+            li.innerHTML = `
+                <div>
+                    <strong style="color: var(--primary);">Branch:</strong> ${office.branch_office} <br>
+                    <span style="font-size: 13px; color: var(--text-light); margin-top: 4px; display: inline-block;"><strong>Sub Office:</strong> ${office.sub_office}</span>
+                </div>
+            `;
+            resultsList.appendChild(li);
+        });
+      }
+
+      // VOICE SEARCH LOGIC
+      function startVoiceSearch() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert("Sorry, your browser doesn't support voice search. Try Chrome, Edge, or Safari.");
+            return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-IN';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        const micBtn = document.getElementById('mic-btn');
+        const searchInput = document.getElementById('search-input');
+
+        recognition.onstart = function() {
+            micBtn.textContent = '🔴';
+            micBtn.style.color = '#ef4444';
+            searchInput.placeholder = "Listening...";
+            searchInput.value = "";
+        };
+
+        recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            searchInput.value = transcript.replace(/\.$/, ''); 
+            searchOffices(); 
+        };
+
+        recognition.onerror = function(event) {
+            console.error("Speech recognition error:", event.error);
+            if (event.error === 'not-allowed') {
+                alert("Microphone access was denied. Please allow it in your browser settings.");
+            }
+        };
+
+        recognition.onend = function() {
+            micBtn.textContent = '🎤';
+            micBtn.style.color = 'var(--text)';
+            searchInput.placeholder = "Search branch or sub office...";
+        };
+
+        recognition.start();
+      }
+
+      // EVENT LISTENERS
+      document.getElementById("signout-btn").addEventListener("click", async () => {
+        await supabaseClient.auth.signOut();
+        checkUserSession();
+      });
+
+      document.getElementById('search-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); searchOffices(); }
+      });
+
+      document.getElementById('search-input').addEventListener('input', function() {
+        searchOffices();
+      });
+
+      // BOOTSTRAP APP
+      checkUserSession();
+    </script>
+  </body>
+</html>
